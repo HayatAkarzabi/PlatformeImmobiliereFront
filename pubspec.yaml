@@ -1,0 +1,32 @@
+name: gestion_immobilier_front
+description: Application de gestion immobilière
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.1.0
+  shared_preferences: ^2.2.2
+  provider: ^6.0.5
+
+  image_picker: ^1.0.4
+
+    # Pour les permissions (Android 13+)
+  permission_handler: ^11.1.0
+  # Supprimez path_provider et open_file pour le web ou utilisez des alternatives
+  intl: ^0.18.1
+  url_launcher: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  # Supprimez ou commentez la section assets si vous n'avez pas d'images
+  # assets:
+  #   - assets/images/
