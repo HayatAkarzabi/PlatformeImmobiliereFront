@@ -23,13 +23,14 @@ class DemandeLocationService {
       }
 
       final response = await http.get(
-        Uri.parse('$baseUrl/api/demandes/mes-demandes'),
+        Uri.parse('$baseUrl/api/v1/demandes-location/mes-demandes'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
       );
+
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);

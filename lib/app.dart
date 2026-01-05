@@ -78,7 +78,7 @@
 //
 //         // 1. Récupérer les demandes de location
 //         try {
-//           final demandesResponse = await _apiService.get('/api/v1/demandes-location/mes-demandes');
+//           final demandesResponse = await _apiService.get('/api/v1/demandes-location/mes_locataires_screen.dart-demandes');
 //           if (demandesResponse.statusCode == 200) {
 //             final demandes = jsonDecode(demandesResponse.body);
 //             stats['demandes'] = demandes is List ? demandes.length : 0;
@@ -90,7 +90,7 @@
 //
 //         // 2. Récupérer les contrats du locataire
 //         try {
-//           final contratsResponse = await _apiService.get('/api/v1/contrats/mes-contrats');
+//           final contratsResponse = await _apiService.get('/api/v1/contrats/mes_locataires_screen.dart-contrats');
 //           if (contratsResponse.statusCode == 200) {
 //             final contrats = jsonDecode(contratsResponse.body);
 //             stats['contrats'] = contrats is List ? contrats.length : 0;

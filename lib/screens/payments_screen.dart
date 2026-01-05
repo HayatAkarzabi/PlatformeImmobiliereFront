@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:gestion_immobilier_front/screens/payment_page.dart';
 import '../models/user.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
@@ -7,6 +8,7 @@ import '../theme/app_color.dart';
 
 class PaiementsScreen extends StatefulWidget {
   const PaiementsScreen({super.key});
+
 
   @override
   State<PaiementsScreen> createState() => _PaiementsScreenState();
@@ -78,13 +80,13 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
       final statut = paiement['statut']?.toString() ?? '';
       if (_selectedTab == 1) {
         return statut == 'EN_RETARD' ||
-               statut == 'OVERDUE' ||
-               paiement['estEnRetard'] == true;
+            statut == 'OVERDUE' ||
+            paiement['estEnRetard'] == true;
       } else if (_selectedTab == 2) {
         return statut == 'COMPLETED' ||
-               statut == 'CAPTURED' ||
-               statut == 'PAYE' ||
-               paiement['capturedAt'] != null;
+            statut == 'CAPTURED' ||
+            statut == 'PAYE' ||
+            paiement['capturedAt'] != null;
       }
       return false;
     }).toList();
@@ -212,7 +214,7 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
                     children: [
                       Text(
                         paiement['periode'] ??
-                        'Loyer ${paiement['moisConcerne'] ?? ''}',
+                            'Loyer ${paiement['moisConcerne'] ?? ''}',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -339,121 +341,69 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(color: AppColors.primary),
-              const SizedBox(height: 20),
-              Text(
-                'Chargement de vos paiements...',
-                style: TextStyle(
-                  color: AppColors.greyDark,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-        ),
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    final filteredPaiements = _getFilteredPaiements();
+    final filtered = _getFilteredPaiements();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mes paiements'),
+        title: const Text('Exécuter un paiement'),
         actions: [
-          IconButton(
-            onPressed: _loadData,
-            icon: const Icon(Icons.refresh),
-          ),
+          IconButton(onPressed: _loadData, icon: const Icon(Icons.refresh))
         ],
       ),
-      body: Column(
-        children: [
-          // Tabs
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                bottom: BorderSide(color: Colors.grey[200]!),
-              ),
-            ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildTabButton('Tous', 0, _paiements.length),
-                  _buildTabButton('En retard', 1,
-                    _paiements.where((p) =>
-                      (p['statut']?.toString() ?? '').contains('RETARD') ||
-                      (p['statut']?.toString() ?? '').contains('OVERDUE') ||
-                      p['estEnRetard'] == true
-                    ).length
-                  ),
-                  _buildTabButton('Payés', 2,
-                    _paiements.where((p) =>
-                      (p['statut']?.toString() ?? '').contains('COMPLETED') ||
-                      (p['statut']?.toString() ?? '').contains('CAPTURED') ||
-                      p['capturedAt'] != null
-                    ).length
-                  ),
-                ],
-              ),
-            ),
-          ),
 
-          // Liste
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _loadData,
-              color: AppColors.primary,
-              child: filteredPaiements.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.payments_outlined,
-                            size: 80,
-                            color: Colors.grey[300],
-                          ),
-                          const SizedBox(height: 20),
-                          Text(
-                            _error.isEmpty
-                              ? 'Aucun paiement trouvé'
-                              : _error,
-                            style: TextStyle(
-                              color: AppColors.greyDark,
-                              fontSize: 16,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          if (_error.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 10),
-                              child: ElevatedButton(
-                                onPressed: _loadData,
-                                child: const Text('Réessayer'),
-                              ),
-                            ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: filteredPaiements.length,
-                      itemBuilder: (context, index) {
-                        final paiement = filteredPaiements[index] as Map<String, dynamic>;
-                        return _buildPaiementCard(paiement);
-                      },
-                    ),
-            ),
-          ),
-        ],
+      body: filtered.isEmpty
+          ? Center(
+        child: Text(
+          _error.isEmpty ? 'Aucun paiement trouvé' : _error,
+          style: TextStyle(color: AppColors.greyDark),
+        ),
+      )
+          : ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: filtered.length,
+        itemBuilder: (_, i) =>
+            _buildPaiementCard(filtered[i] as Map<String, dynamic>),
       ),
+
+      /// ✅ BOUTON FLOTTANT GLOBAL
+      floatingActionButton: filtered.isEmpty
+          ? null
+          : FloatingActionButton.extended(
+        icon: const Icon(Icons.lock),
+        label: const Text(
+          'Payer maintenant',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: AppColors.primary,
+        onPressed: () {
+          final paiement = filtered.firstWhere(
+                (p) =>
+            p['capturedAt'] == null &&
+                !(p['statut'] ?? '').toString().contains('COMPLETED'),
+            orElse: () => filtered.first,
+          );
+
+          final montant =
+          (paiement['montantTotal'] ?? paiement['montant'] ?? 0)
+              .toDouble();
+
+          Navigator.pushNamed(
+            context,
+            '/payment',
+            arguments: {
+              'montant': montant,
+              'periode': paiement['periode'] ?? 'Mois courant',
+            },
+          );
+        },
+      ),
+
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
@@ -479,8 +429,8 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: _selectedTab == index
-                  ? AppColors.primary.withOpacity(0.2)
-                  : Colors.grey[200],
+                    ? AppColors.primary.withOpacity(0.2)
+                    : Colors.grey[200],
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(

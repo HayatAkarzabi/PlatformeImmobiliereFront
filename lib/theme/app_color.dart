@@ -8,7 +8,7 @@ class AppColors {
   static const Color success = Color(0xFF4CAF50); // Vert
   static const Color warning = Color(0xFFFF9800); // Orange
   static const Color error = Color(0xFFF44336); // Rouge
-
+  static const Color blue700 = Color(0xFF1976D2);
   // Nuances de gris
   static const Color dark = Color(0xFF1A1A2E);
   static const Color greyDark = Color(0xFF6B7280);
@@ -21,6 +21,7 @@ class AppColors {
   // Couleurs du design Figma
   static const Color blue600 = Color(0xFF2563EB);
   static const Color blue50 = Color(0xFFEFF6FF);
+  static const Color blue100 = Color(0xFFDBEAFE);
 
   static const Color gray50 = Color(0xFFF9FAFB);
   static const Color gray100 = Color(0xFFF3F4F6);
@@ -47,6 +48,9 @@ class AppColors {
   static const Color amber600 = Color(0xFFD97706);
   static const Color amber50 = Color(0xFFFFFBEB);
 
+  static const Color green = Color(0xFF10B981);  // AJOUTÉ
+  static const Color orange = Color(0xFFF59E0B);  // AJOUTÉ
+  static const Color purple = Color(0xFF8B5CF6);  // AJOUTÉ
 
 
 }

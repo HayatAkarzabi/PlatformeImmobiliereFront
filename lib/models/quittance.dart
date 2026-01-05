@@ -1,4 +1,3 @@
-// models/quittance.dart
 class Quittance {
   final int paiementId;
   final String reference;
@@ -9,6 +8,7 @@ class Quittance {
   final String nomProprietaire;
   final String nomLocataire;
   final String urlQuittance;
+  final DateTime? dateGeneration;
 
   Quittance({
     required this.paiementId,
@@ -20,19 +20,31 @@ class Quittance {
     required this.nomProprietaire,
     required this.nomLocataire,
     required this.urlQuittance,
+    this.dateGeneration,
   });
 
   factory Quittance.fromJson(Map<String, dynamic> json) {
     return Quittance(
-      paiementId: json['paiementId'] ?? json['paymentId'],
-      reference: json['reference'] ?? json['Reference'],
-      datePaiement: DateTime.parse(json['datePaiement'] ?? json['capturedAt']),
-      montantTotal: double.parse(json['montantTotal'].toString()),
-      periode: json['periode'] ?? '${DateTime.now().month}/${DateTime.now().year}',
-      bienAdresse: json['bienAdresse'] ?? json['adresse'] ?? '',
-      nomProprietaire: json['nomProprietaire'] ?? json['proprietaire'] ?? '',
-      nomLocataire: json['nomLocataire'] ?? json['locataire'] ?? '',
-      urlQuittance: json['urlQuittance'] ?? '/payments/receipt/${json['paiementId'] ?? json['id']}',
+      paiementId: json['paiementId']?.toInt() ?? json['paymentId'],
+      reference: json['reference'] ?? '',
+      datePaiement: DateTime.parse(json['datePaiement'] ?? json['date_paiement']),
+      montantTotal: (json['montantTotal'] ?? 0).toDouble(),
+      periode: json['periode'] ?? '',
+      bienAdresse: json['bienAdresse'] ?? json['bien_adresse'] ?? '',
+      nomProprietaire: json['nomProprietaire'] ?? json['nom_proprietaire'] ?? '',
+      nomLocataire: json['nomLocataire'] ?? json['nom_locataire'] ?? '',
+      urlQuittance: json['urlQuittance'] ?? json['url_quittance'] ?? '',
+      dateGeneration: json['dateGeneration'] != null
+          ? DateTime.parse(json['dateGeneration'] ?? json['date_generation'])
+          : null,
     );
+  }
+
+  String get periodeCourte {
+    // Format: "Décembre 2024" au lieu de "01/12/2024 au 31/12/2024"
+    if (periode.contains('au')) {
+      return periode.split('au').first.trim();
+    }
+    return periode;
   }
 }

@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:gestion_immobilier_front/screens/reclamations_contrat_screen.dart';
 import '../models/contrat.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
 import '../theme/app_color.dart';
+import 'create_reclamation_screen.dart';
+
 
 class ContratsScreen extends StatefulWidget {
   const ContratsScreen({super.key});
@@ -34,7 +37,7 @@ class _ContratsScreenState extends State<ContratsScreen> {
 
       // 2. Charger les contrats selon le type d'utilisateur
       if (user.type == 'LOCATAIRE') {
-        // Utiliser le vrai endpoint pour mes contrats
+        // Utiliser le vrai endpoint pour mes_locataires_screen.dart contrats
         final response = await _apiService.get('/api/v1/contrats/mes-contrats');
 
         if (response.statusCode == 200) {
@@ -85,7 +88,31 @@ class _ContratsScreenState extends State<ContratsScreen> {
       );
     }
   }
+// AJOUTE CES 2 MÉTHODES APRÈS _downloadContratDocument :
 
+// 1. Pour créer une réclamation
+  void _creerReclamation(Contrat contrat) {
+    Navigator.pop(context); // Ferme le bottom sheet
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CreateReclamationScreen(contrat: contrat),
+      ),
+    );
+  }
+
+// 2. Pour voir les réclamations d'un contrat
+  void _voirReclamations(Contrat contrat) {
+    Navigator.pop(context); // Ferme le bottom sheet
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ReclamationsContratScreen(contratId: contrat.id),
+      ),
+    );
+  }
   // Fonction pour formater la date
   String _formatDate(String dateStr) {
     try {
@@ -227,59 +254,7 @@ class _ContratsScreenState extends State<ContratsScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Contrat ${contrat.reference}',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(contrat.statut).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      contrat.statut,
-                      style: TextStyle(
-                        color: _getStatusColor(contrat.statut),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Bien: ${contrat.bienAdresse ?? contrat.bienVille ?? ''}',
-                style: TextStyle(
-                  color: AppColors.gray600,
-                ),
-              ),
-              const SizedBox(height: 20),
-              _buildDetailRow('Type', contrat.typeContrat ?? 'Non spécifié'),
-              _buildDetailRow('Date début', _formatDate(contrat.dateDebut)),
-              _buildDetailRow('Date fin', _formatDate(contrat.dateFin)),
-              if (contrat.dureeContrat != null)
-                _buildDetailRow('Durée', '${contrat.dureeContrat} mois'),
-              _buildDetailRow('Loyer mensuel',
-                  '${contrat.loyerMensuel?.toStringAsFixed(2) ?? '0'} DH'),
-              if (contrat.charges != null && contrat.charges! > 0)
-                _buildDetailRow(
-                    'Charges', '${contrat.charges!.toStringAsFixed(2)} DH'),
-              if (contrat.caution != null)
-                _buildDetailRow(
-                    'Caution', '${contrat.caution!.toStringAsFixed(2)} DH'),
-              if (contrat.jourPaiement != null)
-                _buildDetailRow('Jour paiement', '${contrat.jourPaiement}'),
+              // DANS _showContratDetails, REMPLACE :
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -287,6 +262,59 @@ class _ContratsScreenState extends State<ContratsScreen> {
                   onPressed: () => _downloadContratDocument(contrat.id),
                   icon: const Icon(Icons.download_rounded),
                   label: const Text('Télécharger le contrat'),
+                ),
+              ),
+
+// PAR CE BLOC COMPLET :
+              const SizedBox(height: 20),
+
+// 1. Bouton Télécharger PDF
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _downloadContratDocument(contrat.id),
+                  icon: const Icon(Icons.picture_as_pdf),
+                  label: const Text('Télécharger le contrat (PDF)'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red[700],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+// 2. Bouton Ajouter une réclamation (seulement si contrat ACTIF)
+              if (contrat.statut == 'ACTIF')
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _creerReclamation(contrat),
+                    icon: const Icon(Icons.report_problem),
+                    label: const Text('Signaler un problème'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 12),
+
+// 3. Bouton Voir les réclamations existantes
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _voirReclamations(contrat),
+                  icon: const Icon(Icons.list),
+                  label: const Text('Voir mes réclamations'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: BorderSide(color: AppColors.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
                 ),
               ),
             ],
@@ -414,3 +442,4 @@ class _ContratsScreenState extends State<ContratsScreen> {
     );
   }
 }
+

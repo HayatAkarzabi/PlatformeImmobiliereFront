@@ -1,5 +1,11 @@
+// main.dart - VERSION CORRIGÉE AVEC REDIRECTION ADMIN
 import 'package:flutter/material.dart';
+import 'package:gestion_immobilier_front/screens/bien_screen_proprietaire.dart';
 import 'package:gestion_immobilier_front/screens/biens_screen.dart';
+import 'package:gestion_immobilier_front/screens/create_reclamation_screen.dart';
+import 'package:gestion_immobilier_front/screens/mes_locataires_screen.dart';
+import 'package:gestion_immobilier_front/screens/nouveau_bien_screen.dart';
+import 'package:gestion_immobilier_front/screens/payment_page.dart';
 import 'package:gestion_immobilier_front/screens/contract_screen.dart';
 import 'package:gestion_immobilier_front/screens/mes_demandes_screen.dart';
 import 'package:gestion_immobilier_front/screens/notifications_screen.dart';
@@ -7,12 +13,20 @@ import 'package:gestion_immobilier_front/screens/demande_envoyer_screen.dart';
 import 'package:gestion_immobilier_front/screens/payments_screen.dart';
 import 'package:gestion_immobilier_front/screens/profile_screen.dart';
 import 'package:gestion_immobilier_front/screens/recherche_screen.dart';
-import 'package:gestion_immobilier_front/screens/reclamations_screen.dart';
+import 'package:gestion_immobilier_front/screens/reclamations_contrat_screen.dart';
+import 'package:gestion_immobilier_front/screens/reclamations_list_screen.dart';
+import 'package:gestion_immobilier_front/screens/payment_result_page.dart';
+import 'package:gestion_immobilier_front/screens/home_proprietaire_screen.dart';
+import 'package:gestion_immobilier_front/screens/admin_dashboard_screen.dart'; // IMPORT AJOUTÉ
+
+import 'models/bien.dart';
+import 'models/contrat.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
 import 'theme/app_color.dart';
+import 'models/user.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,6 +44,7 @@ class _MyAppState extends State<MyApp> {
   final AuthService _authService = AuthService();
   bool _isLoading = true;
   bool _isLoggedIn = false;
+  User? _currentUser;
 
   @override
   void initState() {
@@ -38,11 +53,65 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _checkLoginStatus() async {
-    final isLoggedIn = await _authService.isLoggedIn();
-    setState(() {
-      _isLoggedIn = isLoggedIn;
-      _isLoading = false;
-    });
+    try {
+      final isLoggedIn = await _authService.isLoggedIn();
+
+      if (isLoggedIn) {
+        // Récupérer le profil pour connaître le type d'utilisateur
+        final user = await _authService.getProfile();
+
+        // DEBUG: Afficher les infos de l'utilisateur
+        print('🎯 UTILISATEUR CONNECTÉ:');
+        print('   👤 Nom: ${user.fullName}');
+        print('   📧 Email: ${user.email}');
+        print('   🏷️ Type: ${user.type}');
+        print('   🔍 Est admin: ${user.type == 'ADMIN'}');
+        print('   🔍 Est propriétaire: ${user.type == 'PROPRIETAIRE'}');
+
+        setState(() {
+          _currentUser = user;
+          _isLoggedIn = true;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoggedIn = false;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Erreur lors de la vérification du login: $e');
+      setState(() {
+        _isLoggedIn = false;
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Fonction pour déterminer l'écran d'accueil selon le type d'utilisateur
+  Widget _getHomeScreen() {
+    if (!_isLoggedIn) {
+      return const LoginScreen();
+    }
+
+    final userType = _currentUser?.type?.toUpperCase() ?? 'LOCATAIRE';
+    print('🏠 Redirection selon type utilisateur: $userType');
+
+    // VÉRIFICATION ADMIN EN PREMIER
+    if (userType == 'ADMIN' || userType.contains('ADMIN')) {
+      print('🚀 Redirection vers Admin Dashboard');
+      return const AdminDashboardScreen(); // IMPORTANT: Ajoutez ceci
+    }
+
+    // Ensuite vérifier PROPRIETAIRE
+    if (userType == 'PROPRIETAIRE' || userType.contains('PROPRIETAIRE')) {
+      print('🏠 Redirection vers Dashboard Propriétaire');
+      return HomeScreenProprietaire();
+    }
+
+    // Par défaut: LOCATAIRE
+    print('👤 Redirection vers Dashboard Locataire');
+    return const HomeScreen();
   }
 
   @override
@@ -108,49 +177,61 @@ class _MyAppState extends State<MyApp> {
         ),
         fontFamily: 'Inter',
       ),
-      home: _isLoggedIn ? const HomeScreen() : const LoginScreen(),
+      // Utiliser la fonction qui détermine l'écran selon le type d'utilisateur
+      home: _getHomeScreen(),
       routes: {
         '/login': (context) => const LoginScreen(),
         '/contrats': (context) => const ContratsScreen(),
-        '/reclamations': (context) => const ReclamationsScreen(),
+
+        // ROUTE ADMIN - AJOUTÉE
+        '/admin/dashboard': (context) => const AdminDashboardScreen(),
+
+        // ROUTES PROPRIÉTAIRE
+        '/proprietaire/dashboard': (context) => HomeScreenProprietaire(),
+        '/proprietaire/mes_locataires_screen.dart-biens': (context) => MesBiensScreen(),
+        '/proprietaire/locataires': (context) => MesLocatairesScreen(),
+
+        // ROUTES RÉCLAMATIONS (LOCATAIRE)
+        '/reclamations': (context) {
+          final contratId = ModalRoute.of(context)!.settings.arguments as int;
+          return ReclamationsContratScreen(contratId: contratId);
+        },
+        '/create-reclamation': (context) {
+          final contrat = ModalRoute.of(context)!.settings.arguments as Contrat;
+          return CreateReclamationScreen(contrat: contrat);
+        },
         '/profil': (context) => const ProfilScreen(),
         '/biens': (context) => const BiensScreen(),
+        '/admin': (context) => const AdminDashboardScreen(),
         '/home': (context) => const HomeScreen(),
         '/paiements': (context) => const PaiementsScreen(),
         '/recherche': (context) => const RechercheScreen(),
         '/notifications': (context) => const NotificationsScreen(),
         '/register': (context) => const RegisterScreen(),
+        '/proprietaire/locataires': (context) => const MesLocatairesProprietaireScreen(),
         '/demandes': (context) => const MesDemandesScreen(),
+        '/proprietaire/mes_locataires_screen.dart-biens-proprietaire': (context) => const MesBiensProprietaireScreen(),
 
-
-        // '/nouvelle_demande' est géré par onGenerateRoute ci-dessous
+        '/payment': (context) {
+          final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+          return InteractivePaymentPage(
+            montant: (args['montant'] as num?)?.toDouble() ?? 0.0,
+            periode: args['periode'] as String? ?? 'Mois courant',
+            marchand: args['marchand'] as String? ?? 'Propriétaire',
+            contratId: args['contratId'] as int? ?? 0,
+            userId: args['userId'] as int? ?? 0,
+            authToken: args['authToken'] as String? ?? '',
+          );
+        },
       },
-      // AJOUTE CETTE PARTIE POUR GÉRER LES ROUTES AVEC PARAMÈTRES
-      onGenerateRoute: (RouteSettings settings) {
-        switch (settings.name) {
-          case '/nouvelle_demande':
-          // Vérifier que des arguments ont été fournis
-            if (settings.arguments == null) {
-              // Retourner à l'écran précédent ou afficher une erreur
-              return MaterialPageRoute(
-                builder: (context) => const Scaffold(
-                  body: Center(
-                    child: Text('Erreur: Paramètres manquants'),
-                  ),
-                ),
-              );
-            }
-
-          default:
-          // Pour les routes non trouvées
-            return MaterialPageRoute(
-              builder: (context) => const Scaffold(
-                body: Center(
-                  child: Text('Page non trouvée'),
-                ),
-              ),
-            );
+      onGenerateRoute: (settings) {
+        if (settings.name == '/demande-screen') {
+          final bien = settings.arguments as Bien;
+          return MaterialPageRoute(
+            builder: (_) => DemandeLocationScreen(bien: bien),
+          );
         }
+        return null;
       },
     );
   }
