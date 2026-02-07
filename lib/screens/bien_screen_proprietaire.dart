@@ -1,550 +1,605 @@
+// lib/screens/proprietaire/nouveau_bien_screen.dart - VERSION FINALE QUI FONCTIONNE
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
 import '../../models/bien.dart';
-import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_color.dart';
-import '../models/user.dart';
 
-class MesBiensProprietaireScreen extends StatefulWidget {
-  const MesBiensProprietaireScreen({super.key});
+class NouveauBienScreen extends StatefulWidget {
+  const NouveauBienScreen({super.key});
 
   @override
-  State<MesBiensProprietaireScreen> createState() => _MesBiensProprietaireScreenState();
+  State<NouveauBienScreen> createState() => _NouveauBienScreenState();
 }
 
-class _MesBiensProprietaireScreenState extends State<MesBiensProprietaireScreen> {
-  final AuthService _authService = AuthService();
+class _NouveauBienScreenState extends State<NouveauBienScreen> {
+  final _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
+  final AuthService _authService = AuthService();
+  final ImagePicker _picker = ImagePicker();
 
-  List<Bien> _biens = [];
-  bool _isLoading = true;
-  String _error = '';
-  User? _currentUser;
+  final Map<String, dynamic> _bienData = {
+    'typeBien': 'APPARTEMENT',
+    'ville': '',
+    'adresse': '',
+    'codePostal': '',  // OBLIGATOIRE
+    'surface': '',
+    'nombrePieces': '1',  // Optionnel
+    'nombreChambres': '1',  // Optionnel
+    'nombreSallesBain': '1',  // Optionnel
+    'loyerMensuel': '',
+    'charges': '0',
+    'caution': '0',
+    'description': '',
+    'meuble': false,
+    'balcon': false,
+    'parking': false,
+    'ascenseur': false,
+  };
+  List<XFile> _imageFiles = [];
+  bool _loading = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadUserAndBiens();
-  }
+  final List<String> _types = ['APPARTEMENT', 'MAISON', 'VILLA', 'STUDIO'];
 
-  Future<void> _loadUserAndBiens() async {
+  Future<void> _pickImages() async {
     try {
-      setState(() {
-        _isLoading = true;
-        _error = '';
-      });
-
-      // 1. Charger l'utilisateur courant
-      final user = await _authService.getProfile();
-      setState(() {
-        _currentUser = user;
-      });
-
-      print('🔄 Chargement des biens du propriétaire ${user.id}...');
-
-      // 2. Charger les biens de ce propriétaire spécifique
-      final response = await _apiService.get('/api/v1/biens/proprietaire/${user.id}');
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        setState(() {
-          _biens = data.map((json) => Bien.fromJson(json)).toList();
-          _isLoading = false;
-        });
-        print('✅ ${_biens.length} biens chargés pour le propriétaire');
-      } else {
-        throw Exception('Erreur serveur: ${response.statusCode}');
+      final List<XFile>? images = await _picker.pickMultiImage(
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (images != null && images.isNotEmpty) {
+        setState(() => _imageFiles.addAll(images));
       }
     } catch (e) {
-      print('❌ Erreur chargement biens propriétaire: $e');
-      setState(() {
-        _isLoading = false;
-        _error = 'Impossible de charger vos biens';
+      print('Erreur sélection images: $e');
+    }
+  }
+
+  // CORRECTION : Envoyer TOUJOURS avec multipart/form-data
+  Future<void> _submitForm() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    _formKey.currentState!.save();
+    setState(() => _loading = true);
+
+    try {
+      final user = await _authService.getProfile();
+      final token = await _authService.getToken();
+
+      if (token == null) throw Exception('Non authentifié');
+
+      // Nettoyer les nombres
+      double parseDouble(String value) {
+        try {
+          return double.parse(value.replaceAll(',', '.'));
+        } catch (e) {
+          return 0.0;
+        }
+      }
+
+      // 1. Créer le JSON comme requis
+      // Dans la méthode _submitForm() ou _sendMultipartRequest()
+      final bienJson = jsonEncode({
+        'typeBien': _bienData['typeBien'],
+        'ville': _bienData['ville'],
+        'adresse': _bienData['adresse'],
+        'codePostal': '20000',  // AJOUTEZ CETTE LIGNE - utilisez une valeur appropriée
+        'surface': parseDouble(_bienData['surface']),
+        'loyerMensuel': parseDouble(_bienData['loyerMensuel']),
+        'charges': parseDouble(_bienData['charges']),
+        'caution': parseDouble(_bienData['caution']),
+        'description': _bienData['description'],
+        'proprietaireId': user.id,
+        'reference': 'REF-${DateTime.now().millisecondsSinceEpoch}',
+        'statut': 'DISPONIBLE',  // CHANGÉ de EN_ATTENTE à DISPONIBLE
+        'statutValidation': 'EN_ATTENTE',
+        'meuble': _bienData['meuble'],
+        'balcon': _bienData['balcon'],
+        'parking': _bienData['parking'],
+        'ascenseur': _bienData['ascenseur'],
+        'nombrePieces': null,
+        'nombreChambres': null,
+        'nombreSallesBain': null,
       });
-    }
-  }
 
-  Color _getStatusColor(String statut) {
-    switch (statut) {
-      case 'DISPONIBLE':
-        return Colors.green;
-      case 'LOUE':
-        return Colors.deepPurple;
-      case 'EN_MAINTENANCE':
-        return Colors.orange;
-      default:
-        return AppColors.gray500;
-    }
-  }
+      print('📦 JSON créé: $bienJson');
 
-  String _formatStatus(String statut) {
-    switch (statut) {
-      case 'DISPONIBLE': return 'Disponible';
-      case 'LOUE': return 'Loué';
-      case 'EN_MAINTENANCE': return 'Maintenance';
-      default: return statut;
-    }
-  }
+      // 2. Utiliser une requête multipart CUSTOM pour le web
+      final response = await _sendMultipartRequest(
+        bienJson: bienJson,
+        imageFiles: _imageFiles,
+        token: token!,
+      );
 
-  String _formatType(String type) {
-    switch (type) {
-      case 'APPARTEMENT': return 'Appartement';
-      case 'MAISON': return 'Maison';
-      case 'VILLA': return 'Villa';
-      case 'STUDIO': return 'Studio';
-      default: return type;
-    }
-  }
+      print('📥 Réponse: ${response.statusCode}');
+      print('📥 Body: ${response.body}');
 
-  Widget _buildBienCard(Bien bien) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.gray200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: InkWell(
-        onTap: () {
-          Navigator.pushNamed(
-            context,
-            '/proprietaire/bien-details',
-            arguments: bien,
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Image du bien
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: AppColors.gray100,
-                  image: bien.photos.isNotEmpty
-                      ? DecorationImage(
-                    image: NetworkImage(bien.photos.first),
-                    fit: BoxFit.cover,
-                  )
-                      : null,
-                ),
-                child: bien.photos.isEmpty
-                    ? Center(
-                  child: Icon(
-                    Icons.apartment_outlined,
-                    size: 32,
-                    color: AppColors.gray400,
-                  ),
-                )
-                    : null,
-              ),
-              const SizedBox(width: 16),
-              // Informations du bien
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${_formatType(bien.typeBien)} - ${bien.ville}',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.gray900,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: _getStatusColor(bien.statut).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: _getStatusColor(bien.statut).withOpacity(0.3),
-                            ),
-                          ),
-                          child: Text(
-                            _formatStatus(bien.statut),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: _getStatusColor(bien.statut),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.location_on_outlined,
-                          size: 14,
-                          color: AppColors.gray500,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            bien.adresse,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.gray600,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${bien.loyerMensuel.toStringAsFixed(0)} DH',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.deepPurple,
-                              ),
-                            ),
-                            Text(
-                              'Loyer mensuel',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.gray500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${bien.charges.toStringAsFixed(0)} DH',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.gray700,
-                              ),
-                            ),
-                            Text(
-                              'Charges',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.gray500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${bien.caution.toStringAsFixed(0)} DH',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.gray700,
-                              ),
-                            ),
-                            Text(
-                              'Caution',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.gray500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Réf: ${bien.reference}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.gray500,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppColors.gray100,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '${bien.surface.toStringAsFixed(0)} m²',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.gray700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: AppColors.gray400,
-              ),
-            ],
-          ),
+      if (response.statusCode == 201) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Bien créé avec succès!')),
+        );
+      } else {
+        throw Exception('Erreur ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      print('💥 ERREUR: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur: ${e.toString()}'),
+          backgroundColor: Colors.red,
         ),
-      ),
-    );
+      );
+    } finally {
+      setState(() => _loading = false);
+    }
   }
 
-  Widget _buildStatCard(String title, int value, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  // SOLUTION : Méthode pour envoyer la requête multipart CORRECTEMENT
+  Future<http.Response> _sendMultipartRequest({
+    required String bienJson,
+    required List<XFile> imageFiles,
+    required String token,
+  }) async {
+    try {
+      final url = Uri.parse('http://localhost:8000/api/v1/biens');
+      print('🌐 Envoi multipart à: $url');
+
+      var request = http.MultipartRequest('POST', url);
+
+      // IMPORTANT: Pas de Content-Type header pour multipart
+      request.headers['Authorization'] = 'Bearer $token';
+
+      // Ajouter le champ 'bien' avec le JSON
+      request.fields['bien'] = bienJson;
+      print('📝 Champ "bien" ajouté (${bienJson.length} caractères)');
+
+      // Ajouter les photos OU une image vide
+      if (imageFiles.isEmpty) {
+        print('📸 Pas de photos - création image vide');
+        // Créer une image PNG vide 1x1 pixel
+        final emptyImage = _createEmptyPngImage();
+        final multipartFile = http.MultipartFile.fromBytes(
+          'photos',
+          emptyImage,
+          filename: 'empty.png',
+        );
+        request.files.add(multipartFile);
+        print('📸 Image vide ajoutée');
+      } else {
+        print('📸 Ajout de ${imageFiles.length} photo(s)');
+        for (int i = 0; i < imageFiles.length; i++) {
+          final file = imageFiles[i];
+          final bytes = await file.readAsBytes();
+          final multipartFile = http.MultipartFile.fromBytes(
+            'photos',
+            bytes,
+            filename: 'photo_$i.jpg',
+          );
+          request.files.add(multipartFile);
+          print('📸 Photo $i ajoutée: ${bytes.length} bytes');
+        }
+      }
+
+      // Envoyer la requête
+      print('📤 Envoi de la requête...');
+      final streamedResponse = await request.send();
+
+      // Convertir la réponse
+      final response = await http.Response.fromStream(streamedResponse);
+      print('✅ Réponse reçue: ${response.statusCode}');
+
+      return response;
+    } catch (e) {
+      print('❌ Erreur multipart: $e');
+      rethrow;
+    }
+  }
+
+  // Créer une image PNG vide 1x1 pixel (transparente)
+  Uint8List _createEmptyPngImage() {
+    return Uint8List.fromList([
+      0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+      0x00, 0x00, 0x00, 0x0D, // IHDR chunk length
+      0x49, 0x48, 0x44, 0x52, // "IHDR"
+      0x00, 0x00, 0x00, 0x01, // width = 1
+      0x00, 0x00, 0x00, 0x01, // height = 1
+      0x08, 0x02, 0x00, 0x00, 0x00, // bit depth = 8, color type = 2
+      0x00, 0x00, 0x00, 0x00, // compression = 0
+      0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82 // IEND
+    ]);
+  }
+
+  // VERSION SIMPLE POUR TESTER : Sans photos du tout
+  Future<void> _testSimple() async {
+    setState(() => _loading = true);
+
+    try {
+      final user = await _authService.getProfile();
+      final token = await _authService.getToken();
+
+      if (token == null) throw Exception('Non authentifié');
+
+      // JSON très simple
+      final bienJson = jsonEncode({
+        'typeBien': 'APPARTEMENT',
+        'ville': 'TestVille',
+        'adresse': 'Test Adresse',
+        'surface': 75.0,
+        'loyerMensuel': 3500.0,
+        'charges': 0.0,
+        'caution': 0.0,
+        'description': 'Description test',
+        'proprietaireId': user.id,
+        'statut': 'EN_ATTENTE',
+        'meuble': false,
+        'balcon': false,
+        'parking': false,
+        'ascenseur': false,
+      });
+
+      print('🧪 TEST SIMPLE');
+      print('📦 JSON: $bienJson');
+
+      // Appeler votre ApiService.postMultipart
+      final response = await _apiService.postMultipart(
+        '/api/v1/biens',
+        {},
+        fields: {'bien': bienJson},
+        files: _imageFiles.isEmpty
+            ? {'empty.png': 'photos'}  // Image fictive
+            : _convertToFileMap(),
+      );
+
+      print('📥 Réponse: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 201) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Test réussi!')),
+        );
+      }
+    } catch (e) {
+      print('💥 ERREUR: $e');
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  Map<String, String> _convertToFileMap() {
+    final map = <String, String>{};
+    for (final file in _imageFiles) {
+      map[file.path] = 'photos';
+    }
+    return map;
+  }
+
+  // TEST DIRECT AVEC HTTP
+  Future<void> _testDirectHttp() async {
+    setState(() => _loading = true);
+
+    try {
+      final user = await _authService.getProfile();
+      final token = await _authService.getToken();
+
+      print('🔑 Token: ${token?.substring(0, 20)}...');
+
+      // 1. Créer une requête multipart
+      var request = http.MultipartRequest(
+          'POST',
+          Uri.parse('http://localhost:8000/api/v1/biens')
+      );
+
+      // 2. Ajouter le token
+      request.headers['Authorization'] = 'Bearer $token';
+
+      // 3. Ajouter le JSON dans le champ 'bien'
+      final bienJson = jsonEncode({
+        'typeBien': _bienData['typeBien'],  // APPARTEMENT, MAISON, etc.
+        'ville': _bienData['ville'],
+        'adresse': _bienData['adresse'],
+        'codePostal': _bienData['codePostal'],  // Format: 5 chiffres, ex: "20000"
+        'surface': (_bienData['surface']),
+        'loyerMensuel': (_bienData['loyerMensuel']),
+        'charges': (_bienData['charges']),
+        'caution': (_bienData['caution']),
+        'description': _bienData['description'],
+        'proprietaireId': user.id,  // Long, pas int
+        'statut': 'DISPONIBLE',  // UNIQUEMENT statut, PAS statutValidation
+        'meuble': _bienData['meuble'],
+        'balcon': _bienData['balcon'],
+        'parking': _bienData['parking'],
+        'ascenseur': _bienData['ascenseur'],
+        // Optionnel - selon votre formulaire :
+        'nombrePieces': int.tryParse(_bienData['nombrePieces'] ?? '') ?? 1,
+        'nombreChambres': int.tryParse(_bienData['nombreChambres'] ?? '') ?? 1,
+        'nombreSallesBain': int.tryParse(_bienData['nombreSallesBain'] ?? '') ?? 1,
+        'dateAcquisition': null,  // Ou une date si vous avez ce champ
+      });
+
+      request.fields['bien'] = bienJson;
+      print('📦 JSON ajouté: ${bienJson.length} caractères');
+
+      // 4. Créer une image de test (1x1 pixel transparent)
+      final pngBytes = Uint8List.fromList([
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+        0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+        0x54, 0x08, 0xD7, 0x63, 0xF8, 0xFF, 0xFF, 0x3F,
+        0x00, 0x05, 0xFE, 0x02, 0xFE, 0xDC, 0xCC, 0x59,
+        0xE7, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+        0x44, 0xAE, 0x42, 0x60, 0x82
+      ]);
+
+      final multipartFile = http.MultipartFile.fromBytes(
+        'photos',
+        pngBytes,
+        filename: 'test.png',
+      );
+      request.files.add(multipartFile);
+      print('📸 Image test ajoutée');
+
+      // 5. Envoyer
+      print('📤 Envoi de la requête...');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('📥 Réponse: ${response.statusCode}');
+      print('📥 Body: ${response.body}');
+
+      if (response.statusCode == 201) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Test HTTP direct réussi!')),
+        );
+      }
+    } catch (e) {
+      print('💥 ERREUR HTTP: $e');
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  Widget _buildImagePreview() {
+    if (_imageFiles.isEmpty) {
+      return Column(
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.gray600,
+          Container(
+            height: 150,
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.camera_alt, size: 50, color: Colors.grey),
+                SizedBox(height: 10),
+                Text('Aucune photo (une image vide sera envoyée)'),
+              ],
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            value.toString(),
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
+          const Text(
+            '⚠️ Une image vide sera automatiquement envoyée',
+            style: TextStyle(color: Colors.orange, fontSize: 12),
           ),
         ],
+      );
+    }
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 150,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _imageFiles.length,
+            itemBuilder: (context, index) {
+              return FutureBuilder<Uint8List>(
+                future: _imageFiles[index].readAsBytes(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Container(
+                      width: 150,
+                      height: 150,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(
+                        snapshot.data!,
+                        width: 150,
+                        height: 150,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Text('${_imageFiles.length} photo(s)'),
+            const Spacer(),
+            TextButton(
+              onPressed: () => setState(() => _imageFiles.clear()),
+              child: const Text('Effacer', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextField({
+    required String label,
+    required String field,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+  }) {
+    return TextFormField(
+
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       ),
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      validator: (value) {
+        if (value == null || value.isEmpty) return 'Ce champ est requis';
+        if (keyboardType == TextInputType.number) {
+          final cleaned = value.replaceAll(',', '.');
+          if (double.tryParse(cleaned) == null) return 'Nombre invalide';
+        }
+        return null;
+      },
+      onSaved: (value) => _bienData[field] = value?.trim() ?? '',
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Mes Biens'),
-          backgroundColor: Colors.white,
-          foregroundColor: AppColors.gray900,
-          elevation: 0,
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(color: Colors.deepPurple),
-        ),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mes Biens'),
-        backgroundColor: Colors.white,
-        foregroundColor: AppColors.gray900,
-        elevation: 0,
+        title: const Text('Nouveau Bien'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, size: 22),
-            onPressed: _loadUserAndBiens,
-            style: IconButton.styleFrom(
-              backgroundColor: AppColors.gray100,
-            ),
-          ),
+          if (_loading) const CircularProgressIndicator(),
         ],
       ),
-      body: _error.isNotEmpty
-          ? Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: 64,
-              color: AppColors.gray300,
-            ),
-            const SizedBox(height: 20),
-            Text(
-              _error,
-              style: const TextStyle(
-                fontSize: 16,
-                color: AppColors.gray600,
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _loadUserAndBiens,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-              ),
-              child: const Text('Réessayer'),
-            ),
-          ],
-        ),
-      )
-          : RefreshIndicator(
-        onRefresh: _loadUserAndBiens,
-        color: Colors.deepPurple,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: ListView(
             children: [
-              // Résumé statistique
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      'Total',
-                      _biens.length,
-                      Colors.deepPurple,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildStatCard(
-                      'Loués',
-                      _biens.where((b) => b.statut == 'LOUE').length,
-                      Colors.green,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildStatCard(
-                      'Disponibles',
-                      _biens.where((b) => b.statut == 'DISPONIBLE').length,
-                      Colors.blue,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              // Titre de la liste
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Tous mes_locataires_screen.dart biens',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.gray900,
-                    ),
-                  ),
-                  Text(
-                    '${_biens.length} bien${_biens.length > 1 ? 's' : ''}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.gray500,
-                    ),
-                  ),
-                ],
-              ),
+              // Section photos
+              const Text('Photos:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              _buildImagePreview(),
               const SizedBox(height: 16),
-              // Liste des biens
-              if (_biens.isEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 60),
-                  decoration: BoxDecoration(
-                    color: AppColors.gray50,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.apartment_outlined,
-                        size: 64,
-                        color: AppColors.gray300,
-                      ),
-                      const SizedBox(height: 20),
-                      const Text(
-                        'Aucun bien publié',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: AppColors.gray600,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Commencez par publier votre premier bien',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: AppColors.gray500,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/proprietaire/nouveau-bien');
-                        },
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('Publier un bien'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 16,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                Column(
-                  children: _biens.map((bien) {
-                    return Column(
-                      children: [
-                        _buildBienCard(bien),
-                        if (_biens.indexOf(bien) < _biens.length - 1)
-                          const SizedBox(height: 12),
-                      ],
-                    );
-                  }).toList(),
+              ElevatedButton.icon(
+                onPressed: _pickImages,
+                icon: const Icon(Icons.add_photo_alternate),
+                label: const Text('Ajouter des photos'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 48),
                 ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Type de bien
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(
+                  labelText: 'Type de bien',
+                  border: OutlineInputBorder(),
+                ),
+                value: _bienData['typeBien'],
+                items: _types.map((type) => DropdownMenuItem(
+                  value: type,
+                  child: Text(type.toLowerCase().replaceFirst(type[0].toLowerCase(), type[0])),
+                )).toList(),
+                onChanged: (value) => setState(() => _bienData['typeBien'] = value!),
+              ),
+
+              const SizedBox(height: 16),
+              _buildTextField(label: 'Ville', field: 'ville'),
+              const SizedBox(height: 16),
+              _buildTextField(label: 'Adresse', field: 'adresse', maxLines: 2),
+              const SizedBox(height: 16),
+              _buildTextField(label: 'Code Postal', field: 'codePostal', keyboardType: TextInputType.number),
+              const SizedBox(height: 16),
+              _buildTextField(label: 'Surface (m²)', field: 'surface', keyboardType: TextInputType.number),
+              const SizedBox(height: 16),
+              _buildTextField(label: 'Loyer mensuel (DH)', field: 'loyerMensuel', keyboardType: TextInputType.number),
+              const SizedBox(height: 16),
+              _buildTextField(label: 'Charges (DH)', field: 'charges', keyboardType: TextInputType.number),
+              const SizedBox(height: 16),
+              _buildTextField(label: 'Caution (DH)', field: 'caution', keyboardType: TextInputType.number),
+
+              const SizedBox(height: 16),
+              _buildTextField(label: 'Description', field: 'description', maxLines: 4),
+
+              const SizedBox(height: 32),
+
+              // Bouton principal
+              ElevatedButton(
+                onPressed: _loading ? null : _submitForm,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                child: _loading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                  'Publier le bien',
+                  style: TextStyle(fontSize: 16, color: Colors.white),
+                ),
+              ),
+
+              // Boutons de test
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Text('Tests:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+              const SizedBox(height: 8),
+
+              OutlinedButton(
+                onPressed: _loading ? null : _testSimple,
+                child: const Text('Test simple avec ApiService'),
+              ),
+
+              const SizedBox(height: 8),
+
+              OutlinedButton(
+                onPressed: _loading ? null : _testDirectHttp,
+                child: const Text('Test HTTP direct avec image vide'),
+              ),
+
+              // Instructions
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('📋 Instructions:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(height: 8),
+                    Text('1. Remplissez tous les champs'),
+                    Text('2. Utilisez des points (.) pas des virgules pour les nombres'),
+                    Text('3. Cliquez sur "Publier le bien"'),
+                    Text('4. Si erreur, essayez les boutons de test'),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushNamed(context, '/proprietaire/nouveau-bien');
-        },
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add_rounded),
       ),
     );
   }

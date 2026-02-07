@@ -5,6 +5,10 @@ import '../models/user.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
 import '../theme/app_color.dart';
+import 'dart:typed_data';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
 
 class PaiementsScreen extends StatefulWidget {
   const PaiementsScreen({super.key});
@@ -23,10 +27,88 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
   String _error = '';
   int _selectedTab = 0; // 0: Tous, 1: En retard, 2: Payés
 
+  bool _downloadingReceipt = false;
+  int? _downloadingPaymentId;
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+
+  // Méthode pour télécharger la quittance
+  Future<void> _downloadReceipt(int paymentId) async {
+    try {
+      setState(() {
+        _downloadingPaymentId = paymentId;
+        _downloadingReceipt = true;
+      });
+
+      final bytes = await _apiService.downloadReceipt(paymentId);
+
+      // Sauvegarder et ouvrir le fichier
+      await _saveAndOpenPdf(bytes, 'quittance_$paymentId');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Quittance téléchargée avec succès'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+    } catch (e) {
+      print('Erreur téléchargement: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors du téléchargement: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _downloadingReceipt = false;
+        _downloadingPaymentId = null;
+      });
+    }
+  }
+
+  Future<void> _saveAndOpenPdf(Uint8List bytes, String fileName) async {
+    try {
+      // Obtenir le répertoire de téléchargement
+      Directory? directory;
+
+      if (Platform.isAndroid) {
+        directory = await getExternalStorageDirectory();
+      } else if (Platform.isIOS) {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      if (directory == null) {
+        throw Exception('Impossible d\'accéder au stockage');
+      }
+
+      // Créer le fichier
+      final filePath = '${directory.path}/$fileName.pdf';
+      final file = File(filePath);
+
+      // Écrire les bytes
+      await file.writeAsBytes(bytes);
+
+      // Ouvrir le fichier
+      final result = await OpenFile.open(filePath);
+
+      if (result.type != ResultType.done) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fichier sauvegardé: $filePath'),
+          ),
+        );
+      }
+
+    } catch (e) {
+      print('Erreur sauvegarde PDF: $e');
+      rethrow;
+    }
   }
 
   Future<void> _loadData() async {
@@ -370,38 +452,6 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
             _buildPaiementCard(filtered[i] as Map<String, dynamic>),
       ),
 
-      /// ✅ BOUTON FLOTTANT GLOBAL
-      floatingActionButton: filtered.isEmpty
-          ? null
-          : FloatingActionButton.extended(
-        icon: const Icon(Icons.lock),
-        label: const Text(
-          'Payer maintenant',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: AppColors.primary,
-        onPressed: () {
-          final paiement = filtered.firstWhere(
-                (p) =>
-            p['capturedAt'] == null &&
-                !(p['statut'] ?? '').toString().contains('COMPLETED'),
-            orElse: () => filtered.first,
-          );
-
-          final montant =
-          (paiement['montantTotal'] ?? paiement['montant'] ?? 0)
-              .toDouble();
-
-          Navigator.pushNamed(
-            context,
-            '/payment',
-            arguments: {
-              'montant': montant,
-              'periode': paiement['periode'] ?? 'Mois courant',
-            },
-          );
-        },
-      ),
 
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
@@ -447,3 +497,8 @@ class _PaiementsScreenState extends State<PaiementsScreen> {
     );
   }
 }
+
+
+
+
+

@@ -7,14 +7,63 @@ import '../../models/user.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_color.dart';
+import 'admin_dashboard_screen.dart';
 
+// ========== POINT D'ENTRÉE PROPRIETAIRE ==========
 // ========== POINT D'ENTRÉE PROPRIETAIRE ==========
 class HomeScreenProprietaire extends StatelessWidget {
   const HomeScreenProprietaire({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const ProprietaireDashboardScreen();
+    // AJOUTEZ CETTE VÉRIFICATION
+    return FutureBuilder<User?>(
+      future: AuthService().getProfile(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        if (snapshot.hasData) {
+          final user = snapshot.data!;
+          final userType = user.type?.toString().toUpperCase().trim() ?? '';
+
+          // SI C'EST UN ADMIN, REDIRIGEZ VERS L'ADMIN
+          if (userType == 'ADMIN' || userType.contains('ADMIN')) {
+            // Redirection immédiate
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AdminDashboardScreen(),
+                ),
+              );
+            });
+
+            // Écran temporaire pendant la redirection
+            return const Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 20),
+                    Text('Redirection vers l\'espace admin...'),
+                  ],
+                ),
+              ),
+            );
+          }
+        }
+
+        // Sinon, affichez le dashboard propriétaire normal
+        return const ProprietaireDashboardScreen();
+      },
+    );
   }
 }
 

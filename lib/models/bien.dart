@@ -1,48 +1,3 @@
-// class Bien {
-//   final int id;
-//   final String reference;
-//   final String typeBien;
-//   final String adresse;
-//   final String ville;
-//   final String codePostal;
-//   final double loyerMensuel;
-//   final double charges;
-//   final double caution;
-//   final String statut;
-//   final List<String> photos;
-//
-//   Bien({
-//     required this.id,
-//     required this.reference,
-//     required this.typeBien,
-//     required this.adresse,
-//     required this.ville,
-//     required this.codePostal,
-//     required this.loyerMensuel,
-//     required this.charges,
-//     required this.caution,
-//     required this.statut,
-//     required this.photos,
-//   });
-//
-//   factory Bien.fromJson(Map<String, dynamic> json) {
-//     return Bien(
-//       id: json['id'],
-//       reference: json['reference'],
-//       typeBien: json['typeBien'],
-//       adresse: json['adresse'],
-//       ville: json['ville'],
-//       codePostal: json['codePostal'],
-//       loyerMensuel: double.parse(json['loyerMensuel'].toString()),
-//       charges: double.parse(json['charges'].toString()),
-//       caution: double.parse(json['caution'].toString()),
-//       statut: json['statut'],
-//       photos: List<String>.from(json['photos'] ?? []),
-//     );
-//   }
-// }
-
-
 // models/bien.dart
 class Bien {
   final int id;
@@ -63,6 +18,7 @@ class Bien {
   final String statutValidation;
   final String? motifRejet;
   final DateTime? dateAcquisition;
+  final DateTime? dateValidation; // AJOUTÉ
   final List<String> photos;
   final bool meuble;
   final bool balcon;
@@ -88,6 +44,7 @@ class Bien {
     required this.statutValidation,
     this.motifRejet,
     this.dateAcquisition,
+    this.dateValidation, // AJOUTÉ
     required this.photos,
     required this.meuble,
     required this.balcon,
@@ -104,7 +61,7 @@ class Bien {
       return 0.0;
     }
 
-    // Gérer la date d'acquisition
+    // Gérer les dates
     DateTime? parseDate(dynamic value) {
       if (value == null) return null;
       try {
@@ -133,6 +90,7 @@ class Bien {
       statutValidation: json['statutValidation'] as String? ?? '',
       motifRejet: json['motifRejet'] as String?,
       dateAcquisition: parseDate(json['dateAcquisition']),
+      dateValidation: parseDate(json['dateValidation']), // AJOUTÉ
       photos: List<String>.from(json['photos'] ?? []),
       meuble: json['meuble'] as bool? ?? false,
       balcon: json['balcon'] as bool? ?? false,
@@ -141,7 +99,9 @@ class Bien {
     );
   }
 
-  // Méthode pour obtenir les équipements
+  // Getter pour superficie (alias de surface)
+  double get superficie => surface;
+
   List<String> get equipements {
     final List<String> eq = [];
     if (meuble) eq.add('Meublé');

@@ -12,7 +12,8 @@ dependencies:
   syncfusion_flutter_charts: ^32.1.21  # Version actuelle au 2026
   shared_preferences: ^2.2.2
   provider: ^6.0.5
-
+  open_file: ^3.3.3
+  path_provider: ^2.1.0
   image_picker: ^1.0.4
 
     # Pour les permissions (Android 13+)

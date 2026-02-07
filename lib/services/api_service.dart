@@ -1,8 +1,10 @@
 // services/api_service.dart
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 import '../utils/constants.dart';
 
 class ApiService {
@@ -28,6 +30,110 @@ class ApiService {
   // Méthode pour récupérer le token (publique pour usage externe)
   Future<String?> getToken() async {
     return await _getToken();
+  }
+
+  // Télécharger la quittance PDF
+  Future<Uint8List> downloadReceipt(int paymentId) async {
+    try {
+      final token = await _getToken();
+
+      if (token == null) {
+        throw Exception('Utilisateur non authentifié');
+      }
+
+      final url = '$baseUrl/payments/receipt/$paymentId';
+      print('🌐 DOWNLOAD RECEIPT: $url');
+
+      final response = await client.get(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/pdf',
+        },
+      ).timeout(const Duration(seconds: 60));
+
+      print('📥 Download Response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final bytes = response.bodyBytes;
+        print('✅ PDF téléchargé: ${bytes.length} bytes');
+        return bytes;
+      } else if (response.statusCode == 404) {
+        throw Exception('Quittance non trouvée pour ce paiement');
+      } else {
+        throw Exception('Échec du téléchargement: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print('❌ Download Receipt Error: $e');
+      rethrow;
+    }
+  }
+
+  // Télécharger et sauvegarder la quittance
+  Future<String> downloadAndSaveReceipt(int paymentId) async {
+    try {
+      final bytes = await downloadReceipt(paymentId);
+
+      // Obtenir le répertoire de stockage
+      final directory = await getApplicationDocumentsDirectory();
+      final fileName = 'quittance_$paymentId${DateTime.now().millisecondsSinceEpoch}.pdf';
+      final filePath = '${directory.path}/$fileName';
+
+      // Sauvegarder le fichier
+      final file = File(filePath);
+      await file.writeAsBytes(bytes);
+
+      print('💾 Fichier sauvegardé: $filePath (${bytes.length} bytes)');
+      return filePath;
+    } catch (e) {
+      print('❌ Save Receipt Error: $e');
+      rethrow;
+    }
+  }
+  // Dans api_service.dart, ajoutez cette méthode
+
+// Demande pour devenir propriétaire
+  Future<http.Response> requestProprietaire() async {
+    try {
+      final headers = await _createHeaders();
+      final token = await _getToken();
+
+      print('🔄 Demande pour devenir propriétaire...');
+
+      final url = '$baseUrl/api/profile/request-proprietaire';
+      print('🌐 POST: $url');
+
+      final response = await client.post(
+        Uri.parse(url),
+        headers: headers,
+      ).timeout(const Duration(seconds: 30));
+
+      print('📥 Response: ${response.statusCode}');
+
+      if (response.statusCode >= 400) {
+        print('❌ Error: ${response.statusCode}: ${response.body}');
+      }
+
+      return response;
+    } catch (e) {
+      print('❌ Request Proprietaire Error: $e');
+      rethrow;
+    }
+  }
+
+// Vérifier le statut de la demande
+  Future<http.Response> checkProprietaireStatus() async {
+    try {
+      final headers = await _createHeaders();
+      final url = '$baseUrl/api/profile/proprietaire-status'; // Vous devrez créer cet endpoint
+      print('🌐 GET: $url');
+
+      final response = await client.get(Uri.parse(url), headers: headers);
+      return response;
+    } catch (e) {
+      print('❌ Check Proprietaire Status Error: $e');
+      rethrow;
+    }
   }
 
   // Créer les headers avec token
@@ -350,7 +456,4 @@ class ApiService {
   // Fonction utilitaire pour trouver le minimum de deux entiers
   int min(int a, int b) => a < b ? a : b;
   static int _min(int a, int b) => a < b ? a : b;
-
 }
-
-

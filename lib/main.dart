@@ -1,5 +1,6 @@
 // main.dart - VERSION CORRIGÉE AVEC REDIRECTION ADMIN
 import 'package:flutter/material.dart';
+import 'package:gestion_immobilier_front/screens/bien_gestion_screen.dart';
 import 'package:gestion_immobilier_front/screens/bien_screen_proprietaire.dart';
 import 'package:gestion_immobilier_front/screens/biens_screen.dart';
 import 'package:gestion_immobilier_front/screens/create_reclamation_screen.dart';
@@ -60,13 +61,15 @@ class _MyAppState extends State<MyApp> {
         // Récupérer le profil pour connaître le type d'utilisateur
         final user = await _authService.getProfile();
 
-        // DEBUG: Afficher les infos de l'utilisateur
-        print('🎯 UTILISATEUR CONNECTÉ:');
+        // DEBUG DÉTAILLÉ
+        print('🎯 ========== DEBUG CONNEXION ==========');
         print('   👤 Nom: ${user.fullName}');
         print('   📧 Email: ${user.email}');
-        print('   🏷️ Type: ${user.type}');
-        print('   🔍 Est admin: ${user.type == 'ADMIN'}');
-        print('   🔍 Est propriétaire: ${user.type == 'PROPRIETAIRE'}');
+        print('   🏷️ Type brut: "${user.type}"');
+        print('   🏷️ Type formaté: "${user.type?.toString().toUpperCase().trim()}"');
+        print('   📊 User complet: ${user.toJson()}');
+        print('   🔍 Est admin: ${user.type?.toString().toUpperCase().contains("ADMIN")}');
+        print('=======================================');
 
         setState(() {
           _currentUser = user;
@@ -87,33 +90,40 @@ class _MyAppState extends State<MyApp> {
       });
     }
   }
-
   // Fonction pour déterminer l'écran d'accueil selon le type d'utilisateur
   Widget _getHomeScreen() {
     if (!_isLoggedIn) {
       return const LoginScreen();
     }
 
-    final userType = _currentUser?.type?.toUpperCase() ?? 'LOCATAIRE';
-    print('🏠 Redirection selon type utilisateur: $userType');
+    final userType = _currentUser?.type?.toString().toUpperCase().trim() ?? 'LOCATAIRE';
+    print('🏠 DEBUG Redirection - Type utilisateur: "$userType"');
+    print('🏠 DEBUG Redirection - Type exact: ${_currentUser?.type}');
+    print('🏠 DEBUG Redirection - User object: ${_currentUser?.toJson()}');
 
-    // VÉRIFICATION ADMIN EN PREMIER
-    if (userType == 'ADMIN' || userType.contains('ADMIN')) {
-      print('🚀 Redirection vers Admin Dashboard');
-      return const AdminDashboardScreen(); // IMPORTANT: Ajoutez ceci
+    // VÉRIFICATION ADMIN - AVEC PLUS DE FLEXIBILITÉ
+    if (userType == 'ADMIN' ||
+        userType.contains('ADMIN') ||
+        userType == 'ROLE_ADMIN' ||
+        userType == '["ADMIN"]' ||  // Cas où c'est un tableau JSON
+        (userType.startsWith('[') && userType.contains('ADMIN'))) {
+      print('🚀 ADMIN DÉTECTÉ - Redirection vers Admin Dashboard');
+      return const AdminDashboardScreen();
     }
 
-    // Ensuite vérifier PROPRIETAIRE
-    if (userType == 'PROPRIETAIRE' || userType.contains('PROPRIETAIRE')) {
-      print('🏠 Redirection vers Dashboard Propriétaire');
+    // Vérification PROPRIETAIRE
+    if (userType == 'PROPRIETAIRE' ||
+        userType.contains('PROPRIETAIRE') ||
+        userType == 'ROLE_PROPRIETAIRE' ||
+        (userType.startsWith('[') && userType.contains('PROPRIETAIRE'))) {
+      print('🏠 PROPRIETAIRE DÉTECTÉ - Redirection vers Dashboard Propriétaire');
       return HomeScreenProprietaire();
     }
 
     // Par défaut: LOCATAIRE
-    print('👤 Redirection vers Dashboard Locataire');
+    print('👤 LOCATAIRE DÉTECTÉ - Redirection vers Dashboard Locataire');
     return const HomeScreen();
   }
-
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -186,10 +196,10 @@ class _MyAppState extends State<MyApp> {
         // ROUTE ADMIN - AJOUTÉE
         '/admin/dashboard': (context) => const AdminDashboardScreen(),
 
-        // ROUTES PROPRIÉTAIRE
-        '/proprietaire/dashboard': (context) => HomeScreenProprietaire(),
-        '/proprietaire/mes_locataires_screen.dart-biens': (context) => MesBiensScreen(),
-        '/proprietaire/locataires': (context) => MesLocatairesScreen(),
+        // // ROUTES PROPRIÉTAIRE
+        // '/proprietaire/dashboard': (context) => HomeScreenProprietaire(),
+        // '/proprietaire/mes_locataires_screen.dart-biens': (context) => MesBiensScreen(),
+        // '/proprietaire/locataires': (context) => MesLocatairesScreen(),
 
         // ROUTES RÉCLAMATIONS (LOCATAIRE)
         '/reclamations': (context) {
@@ -203,36 +213,66 @@ class _MyAppState extends State<MyApp> {
         '/profil': (context) => const ProfilScreen(),
         '/biens': (context) => const BiensScreen(),
         '/admin': (context) => const AdminDashboardScreen(),
+        '/admin/biens': (context) => const BiensGestionScreen(),
         '/home': (context) => const HomeScreen(),
-        '/paiements': (context) => const PaiementsScreen(),
         '/recherche': (context) => const RechercheScreen(),
         '/notifications': (context) => const NotificationsScreen(),
         '/register': (context) => const RegisterScreen(),
         '/proprietaire/locataires': (context) => const MesLocatairesProprietaireScreen(),
         '/demandes': (context) => const MesDemandesScreen(),
-        '/proprietaire/mes_locataires_screen.dart-biens-proprietaire': (context) => const MesBiensProprietaireScreen(),
+        '/proprietaire/nouveau-bien': (context) => const NouveauBienScreen(),
+        '/paiements':(context)=>PaiementsScreen(),
+        '/payment/process': (context) {
+          final args = ModalRoute.of(context)?.settings.arguments;
 
-        '/payment': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
-          return InteractivePaymentPage(
-            montant: (args['montant'] as num?)?.toDouble() ?? 0.0,
-            periode: args['periode'] as String? ?? 'Mois courant',
-            marchand: args['marchand'] as String? ?? 'Propriétaire',
-            contratId: args['contratId'] as int? ?? 0,
-            userId: args['userId'] as int? ?? 0,
-            authToken: args['authToken'] as String? ?? '',
+          if (args is Map<String, dynamic>) {
+            return PaymentProcessScreen(
+              contratId: args['contratId'] ?? 0,
+              userId: args['userId'] ?? 0,
+              authToken: args['authToken'] ?? '',
+              montant: args['montant'] ?? 0.0,
+              periode: args['periode'] ?? 'Mois courant',
+              // Ces paramètres sont optionnels dans votre PaymentProcessScreen
+              contratReference: args['contratReference'] ?? '',
+              montantLoyer: args['montantLoyer'] ?? 0.0,
+              montantCharges: args['montantCharges'] ?? 0.0,
+              proprietaireNom: args['proprietaireNom'] ?? 'Propriétaire',
+              bienAdresse: args['bienAdresse'] ?? 'Adresse non disponible',
+            );
+          }
+
+          return const Scaffold(
+            body: Center(child: Text('Paramètres manquants')),
           );
         },
       },
+
+      // Gestion des routes dynamiques avec onGenerateRoute
       onGenerateRoute: (settings) {
-        if (settings.name == '/demande-screen') {
-          final bien = settings.arguments as Bien;
-          return MaterialPageRoute(
-            builder: (_) => DemandeLocationScreen(bien: bien),
-          );
+        // Pour les routes dynamiques avec paramètres dans l'URL
+        switch (settings.name) {
+          case '/payment/history':
+            final uri = Uri.parse(settings.name!);
+            final contratId = int.tryParse(uri.queryParameters['contratId'] ?? '');
+
+            return MaterialPageRoute(
+               builder: (context) =>PaiementsScreen(),
+            );
+
+          case '/payment/details':
+            final paymentId = settings.arguments as int? ?? 0;
+            // Vous pouvez créer un écran PaymentDetailsScreen ici
+            return MaterialPageRoute(
+              builder: (context) => Scaffold(
+                appBar: AppBar(title: const Text('Détails du paiement')),
+                body: Center(child: Text('Détails du paiement #$paymentId')),
+              ),
+            );
         }
-        return null;
+
       },
+
+
     );
   }
 }

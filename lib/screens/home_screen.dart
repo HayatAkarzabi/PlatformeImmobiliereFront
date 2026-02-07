@@ -1,6 +1,7 @@
 // lib/screens/home/home_screen.dart - Version ESTHÉTIQUE AMÉLIORÉE
 import 'package:flutter/material.dart';
 import 'package:gestion_immobilier_front/screens/home_proprietaire_screen.dart';
+import 'package:gestion_immobilier_front/screens/reclamations_contrat_screen.dart';
 import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,7 @@ import '../../models/user.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_color.dart';
+import '../models/contrat.dart';
 
 // ========== APP DRAWER AMÉLIORÉ ==========
 class AppDrawer extends StatefulWidget {
@@ -196,7 +198,7 @@ class _AppDrawerState extends State<AppDrawer> {
       ]);
     } else if (_userRole == 'PROPRIETAIRE') {
       items.addAll([
-        {'title': 'Mes Biens', 'icon': Icons.apartment_outlined, 'route': '/biens'},
+        {'title': 'Biens Publiques', 'icon': Icons.apartment_outlined, 'route': '/biens'},
         {'title': 'Demandes reçues', 'icon': Icons.inbox_outlined, 'route': '/demandes-recues'},
         {'title': 'Contrats en cours', 'icon': Icons.assignment_outlined, 'route': '/contrats-proprietaire'},
         {'title': 'Paiements', 'icon': Icons.payment_outlined, 'route': '/paiements-proprietaire'},
@@ -375,6 +377,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // Remplacer toute la méthode _loadUserStatistics() (lignes ~210-270)
   Future<void> _loadUserStatistics(int userId, String userType) async {
     try {
       Map<String, dynamic> stats = {
@@ -384,55 +387,179 @@ class _HomeScreenState extends State<HomeScreen> {
         'biens_loues': 0,
       };
 
-      // Demandes
-      try {
-        final response = await _apiService.get('/api/v1/demandes-location/mes_locataires_screen.dart-demandes');
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          stats['demandes'] = data is List ? data.length : 0;
-        }
-      } catch (e) {
-        print('⚠️ Erreur demandes: $e');
-      }
+      print('📊 Chargement des statistiques pour l\'utilisateur $userId...');
 
-      // Contrats
+      // ========== 1. DEMANDES ==========
       try {
-        final response = await _apiService.get('/api/v1/contrats/mes_locataires_screen.dart-contrats');
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data is List) {
-            stats['contrats'] = data.length;
-            stats['biens_loues'] = data.where((c) => c['statut'] == 'ACTIF').length;
+        print('🔍 Récupération des demandes...');
+
+        // ESSAYER DIFFÉRENTS ENDPOINTS POSSIBLES
+        final endpoints = [
+          '/api/v1/demandes-location/mes-demandes',
+          '/api/demandes/mes-demandes',
+          '/api/demandes/user/$userId',
+          '/api/v1/demandes/locataire/$userId',
+        ];
+
+        for (final endpoint in endpoints) {
+          try {
+            print('🌐 Test endpoint demandes: $endpoint');
+            final response = await _apiService.get(endpoint).timeout(const Duration(seconds: 5));
+
+            if (response.statusCode == 200) {
+              final data = jsonDecode(response.body);
+              print('✅ Endpoint demandes trouvé: $endpoint');
+
+              if (data is List) {
+                stats['demandes'] = data.length;
+                print('📈 Demandes trouvées: ${data.length}');
+              } else if (data is Map && data.containsKey('content')) {
+                final content = data['content'];
+                if (content is List) {
+                  stats['demandes'] = content.length;
+                  print('📈 Demandes trouvées: ${content.length}');
+                }
+              } else if (data is Map && data.containsKey('totalElements')) {
+                stats['demandes'] = data['totalElements'] ?? 0;
+                print('📈 Demandes trouvées: ${data['totalElements']}');
+              }
+              break; // Sortir de la boucle si un endpoint fonctionne
+            }
+          } catch (e) {
+            print('⚠️ Erreur sur $endpoint: $e');
           }
         }
       } catch (e) {
-        print('⚠️ Erreur contrats: $e');
+        print('❌ Erreur récupération demandes: $e');
       }
 
-      // Paiements
+      // ========== 2. CONTRATS ==========
       try {
-        final response = await _apiService.get('/payments/locataire/$userId');
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data is Map && data.containsKey('content')) {
-            stats['paiements'] = data['content'] is List ? data['content'].length : 0;
-          } else if (data is List) {
-            stats['paiements'] = data.length;
+        print('🔍 Récupération des contrats...');
+
+        // ESSAYER DIFFÉRENTS ENDPOINTS POSSIBLES
+        final endpoints = [
+          '/api/v1/contrats/mes-contrats',
+          // '/api/contrats/mes-contrats',
+          // '/api/contrats/user/$userId',
+          // '/api/v1/contrats/locataire/$userId',
+        ];
+
+        for (final endpoint in endpoints) {
+          try {
+            print('🌐 Test endpoint contrats: $endpoint');
+            final response = await _apiService.get(endpoint).timeout(const Duration(seconds: 5));
+
+            if (response.statusCode == 200) {
+              final data = jsonDecode(response.body);
+              print('✅ Endpoint contrats trouvé: $endpoint');
+
+              if (data is List) {
+                stats['contrats'] = data.length;
+
+                // Compter les contrats actifs pour "biens loués"
+                final contratsActifs = data.where((c) =>
+                (c is Map && c['statut'] == 'ACTIF') ||
+                    (c is Contrat && c.statut == 'ACTIF')
+                ).length;
+
+                stats['biens_loues'] = contratsActifs;
+                print('📈 Contrats trouvés: ${data.length} (actifs: $contratsActifs)');
+              } else if (data is Map && data.containsKey('content')) {
+                final content = data['content'];
+                if (content is List) {
+                  stats['contrats'] = content.length;
+
+                  final contratsActifs = content.where((c) =>
+                  (c is Map && c['statut'] == 'ACTIF')
+                  ).length;
+
+                  stats['biens_loues'] = contratsActifs;
+                  print('📈 Contrats trouvés: ${content.length} (actifs: $contratsActifs)');
+                }
+              }
+              break; // Sortir de la boucle si un endpoint fonctionne
+            }
+          } catch (e) {
+            print('⚠️ Erreur sur $endpoint: $e');
           }
         }
       } catch (e) {
-        print('⚠️ Erreur paiements: $e');
+        print('❌ Erreur récupération contrats: $e');
       }
+
+      // ========== 3. PAIEMENTS ==========
+      try {
+        print('🔍 Récupération des paiements...');
+
+        // ESSAYER DIFFÉRENTS ENDPOINTS POSSIBLES
+        final endpoints = [
+          '/payments/locataire/$userId',
+          // '/api/payments/locataire/$userId',
+          // '/api/v1/payments/user/$userId',
+          // '/api/payments/user/$userId',
+          // '/api/payments/mes-paiements',
+        ];
+
+        for (final endpoint in endpoints) {
+          try {
+            print('🌐 Test endpoint paiements: $endpoint');
+            final response = await _apiService.get(endpoint).timeout(const Duration(seconds: 5));
+
+            if (response.statusCode == 200) {
+              final data = jsonDecode(response.body);
+              print('✅ Endpoint paiements trouvé: $endpoint');
+
+              // LOG POUR DÉBOGUER LE FORMAT DES DONNÉES
+              print('📋 Format données paiements: ${data.runtimeType}');
+              if (data is Map) print('🔑 Clés: ${data.keys}');
+
+              if (data is List) {
+                stats['paiements'] = data.length;
+                print('📈 Paiements trouvés: ${data.length}');
+              } else if (data is Map && data.containsKey('content')) {
+                final content = data['content'];
+                if (content is List) {
+                  stats['paiements'] = content.length;
+                  print('📈 Paiements trouvés: ${content.length}');
+                }
+              } else if (data is Map && data.containsKey('totalElements')) {
+                stats['paiements'] = data['totalElements'] ?? 0;
+                print('📈 Paiements trouvés: ${data['totalElements']}');
+              } else if (data is Map && data.containsKey('data')) {
+                final content = data['data'];
+                if (content is List) {
+                  stats['paiements'] = content.length;
+                  print('📈 Paiements trouvés: ${content.length}');
+                }
+              }
+              break; // Sortir de la boucle si un endpoint fonctionne
+            }
+          } catch (e) {
+            print('⚠️ Erreur sur $endpoint: $e');
+          }
+        }
+      } catch (e) {
+        print('❌ Erreur récupération paiements: $e');
+      }
+
+      // ========== 4. VERIFICATION ==========
+      print('''
+    📊 STATISTIQUES FINALES:
+    ├── Demandes: ${stats['demandes']}
+    ├── Contrats: ${stats['contrats']}
+    ├── Paiements: ${stats['paiements']}
+    └── Biens loués (contrats actifs): ${stats['biens_loues']}
+    ''');
 
       setState(() {
         _userStats = stats;
       });
 
     } catch (e) {
-      print('⚠️ Erreur statistiques: $e');
+      print('❌ Erreur globale statistiques: $e');
     }
   }
-
   Future<void> _loadBiens() async {
     setState(() {
       _error = '';
@@ -892,18 +1019,19 @@ class _HomeScreenState extends State<HomeScreen> {
         'route': '/demandes',
       },
       {
-        'title': 'Mes Biens',
-        'description': 'Consulter vos biens',
+        'title': 'Biens Publiques',
+        'description': 'Consulter nos biens',
         'icon': Icons.apartment_outlined,
         'color': Colors.purple,
         'route': '/biens',
       },
+
       {
         'title': 'Réclamations',
         'description': 'Gérez vos réclamations',
         'icon': Icons.report_problem_outlined,
         'color': Colors.red,
-        'route': '/reclamations',
+        'action': () => _navigateToReclamations(),
       },
       {
         'title': 'Notifications',
@@ -912,11 +1040,88 @@ class _HomeScreenState extends State<HomeScreen> {
         'color': Colors.blue,
         'route': '/notifications',
       },
+
     ];
+
   }
 
-  void _navigateToFeature(String route) {
-    Navigator.pushNamed(context, route);
+
+  void _navigateToFeature(dynamic feature) {
+    if (feature is String) {
+      // Si c'est une route simple (string)
+      Navigator.pushNamed(context, feature);
+    } else if (feature is Function) {
+      // Si c'est une action (function)
+      feature();
+    }
+  }
+  // Ajoutez cette méthode dans _HomeScreenState (après _navigateToFeature)
+  Future<void> _navigateToReclamations() async {
+    try {
+      print('🔗 Navigation vers les réclamations...');
+
+      // 1. Récupérer l'utilisateur connecté
+      final user = _currentUser;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Utilisateur non connecté')),
+        );
+        return;
+      }
+
+      // 2. Récupérer les contrats de l'utilisateur
+      final contratsResponse = await _apiService.get('/api/v1/contrats/mes-contrats');
+
+      if (contratsResponse.statusCode == 200) {
+        final List<dynamic> contratsData = jsonDecode(contratsResponse.body);
+
+        if (contratsData.isNotEmpty) {
+          // Prendre le premier contrat (comme dans ContratsScreen)
+          final firstContrat = Contrat.fromJson(contratsData.first);
+
+          print('✅ Navigation vers réclamations du contrat: ${firstContrat.reference}');
+
+          // Naviguer vers ReclamationsContratScreen (MÊME PAGE que dans ContratsScreen)
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ReclamationsContratScreen(
+                contratId: firstContrat.id,
+              ),
+            ),
+          );
+        } else {
+          // Aucun contrat trouvé
+          _showNoContratDialog();
+        }
+      } else {
+        print('❌ Erreur chargement contrats: ${contratsResponse.statusCode}');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Impossible de charger vos contrats')),
+        );
+      }
+    } catch (e) {
+      print('❌ Erreur navigation réclamations: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    }
+  }
+
+  void _showNoContratDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Aucun contrat'),
+        content: const Text('Vous n\'avez pas encore de contrat.\nVeuillez d\'abord créer une demande de location.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   // ========== WIDGETS RECHERCHE AMÉLIORÉS ==========
@@ -2095,7 +2300,15 @@ class _HomeScreenState extends State<HomeScreen> {
                                       feature['description'],
                                       feature['icon'],
                                       feature['color'],
-                                          () => _navigateToFeature(feature['route']),
+                                          () {
+                                        if (feature.containsKey('action')) {
+                                          // Pour les réclamations, appeler l'action
+                                          _navigateToFeature(feature['action']);
+                                        } else {
+                                          // Pour les autres, utiliser la route
+                                          _navigateToFeature(feature['route']);
+                                        }
+                                      },
                                     );
                                   },
                                 ),

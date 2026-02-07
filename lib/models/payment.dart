@@ -1,69 +1,61 @@
-class Paiement {
+class Payment {
   final int id;
   final String reference;
-  final int contratId;
-  final int locataireId;
-  final int bienId;
+  final String status;
   final double montantTotal;
   final DateTime moisConcerne;
   final DateTime? dateEcheance;
-  final DateTime? datePaiement;
-  final String statut;
+  final DateTime? capturedAt;
   final String? modePaiement;
-  final String? referenceTransaction;
+  final String? receiptUrl;
 
-  Paiement({
+  Payment({
     required this.id,
     required this.reference,
-    required this.contratId,
-    required this.locataireId,
-    required this.bienId,
+    required this.status,
     required this.montantTotal,
     required this.moisConcerne,
     this.dateEcheance,
-    this.datePaiement,
-    required this.statut,
+    this.capturedAt,
     this.modePaiement,
-    this.referenceTransaction,
+    this.receiptUrl,
   });
 
-  factory Paiement.fromJson(Map<String, dynamic> json) {
-    return Paiement(
-      id: json['id'],
-      reference: json['reference'],
-      contratId: json['contratId'],
-      locataireId: json['locataireId'],
-      bienId: json['bienId'],
-      montantTotal: double.parse(json['montantTotal'].toString()),
-      moisConcerne: DateTime.parse(json['moisConcerne']),
+  factory Payment.fromJson(Map<String, dynamic> json) {
+    return Payment(
+      id: json['id']?.toInt() ?? 0,
+      reference: json['reference'] ?? '',
+      status: json['status'] ?? 'PENDING',
+      montantTotal: (json['montantTotal'] is num)
+          ? (json['montantTotal'] as num).toDouble()
+          : double.tryParse(json['montantTotal']?.toString() ?? '0') ?? 0.0,
+      moisConcerne: DateTime.tryParse(json['moisConcerne']?.toString() ?? '') ?? DateTime.now(),
       dateEcheance: json['dateEcheance'] != null
-          ? DateTime.parse(json['dateEcheance'])
+          ? DateTime.tryParse(json['dateEcheance'].toString())
           : null,
-      datePaiement: json['datePaiement'] != null
-          ? DateTime.parse(json['datePaiement'])
+      capturedAt: json['capturedAt'] != null
+          ? DateTime.tryParse(json['capturedAt'].toString())
           : null,
-      statut: json['statut'],
       modePaiement: json['modePaiement'],
-      referenceTransaction: json['referenceTransaction'],
+      receiptUrl: json['receiptUrl'] ?? json['receiptUrlStr'],
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'reference': reference,
-      'contratId': contratId,
-      'locataireId': locataireId,
-      'bienId': bienId,
-      'montantTotal': montantTotal,
-      'moisConcerne': moisConcerne.toIso8601String(),
-      'dateEcheance': dateEcheance?.toIso8601String(),
-      'datePaiement': datePaiement?.toIso8601String(),
-      'statut': statut,
-      'modePaiement': modePaiement,
-      'referenceTransaction': referenceTransaction,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'reference': reference,
+    'status': status,
+    'montantTotal': montantTotal,
+    'moisConcerne': moisConcerne.toIso8601String(),
+    'dateEcheance': dateEcheance?.toIso8601String(),
+    'capturedAt': capturedAt?.toIso8601String(),
+    'modePaiement': modePaiement,
+    'receiptUrl': receiptUrl,
+  };
+
+  bool get estPaye => status == 'CAPTURED' || status == 'PAYE';
+  bool get estEnAttente => status == 'PENDING';
+  bool get estEnRetard => status == 'EN_RETARD';
 
   String get periode {
     final moisList = [
@@ -72,8 +64,4 @@ class Paiement {
     ];
     return '${moisList[moisConcerne.month - 1]} ${moisConcerne.year}';
   }
-
-  bool get estPaye => statut == 'PAYE';
-  bool get estEnAttente => statut == 'EN_ATTENTE';
-  bool get estEnRetard => statut == 'EN_RETARD';
 }
